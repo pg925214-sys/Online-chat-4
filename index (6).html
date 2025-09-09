@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fancy 2-Person Chat</title>
+
+<script type="module">
+  // Firebase SDK imports
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getDatabase, ref, push, set, onChildAdded, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+  // 🔹 Firebase config - Replace with your details
+  const firebaseConfig = {
+    apiKey: "AIzaSyDPi8ylztsEowxT2zPZULZ__qjDL6t27ho",
+    authDomain: "chat-room-309a3.firebaseapp.com",
+    projectId: "chat-room-309a3",
+    storageBucket: "chat-room-309a3.firebasestorage.app",
+    messagingSenderId: "113490916013",
+    appId: "1:113490916013:web:d39f1f7e004183796ecc24",
+    measurementId: "G-7PX0J51HG3"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  const chatDiv = document.getElementById("chat");
+  const msgInput = document.getElementById("msg");
+  const typingStatusDiv = document.getElementById("typingStatus");
+  const onlineStatusSpan = document.getElementById("onlineStatus");
+
+  const userId = prompt("Enter your name:");
+  const userColor = "#" + Math.floor(Math.random()*16777215).toString(16);
+  const room = "privateRoom";
+
+  // Online status
+  const onlineRef = ref(db, "rooms/"+room+"/online/"+userId);
+  set(onlineRef, true);
+  onDisconnect(onlineRef).remove();
+
+  onValue(ref(db, "rooms/"+room+"/online"), snap=>{
+    const users = snap.val() ? Object.keys(snap.val()) : [];
+    onlineStatusSpan.textContent = users.length>0 ? "Online: "+users.join(", ") : "Offline";
+  });
+
+  // Typing indicator
+  let typingTimeout;
+  msgInput.addEventListener("input", ()=>{
+    const typingRef = ref(db, "rooms/"+room+"/typing/"+userId);
+    set(typingRef, true);
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(()=> set(ref(db, "rooms/"+room+"/typing/"+userId), null), 1500);
+  });
+
+  onValue(ref(db, "rooms/"+room+"/typing"), snap=>{
+    const typingUsers = snap.val() ? Object.keys(snap.val()).filter(u=>u!==userId) : [];
+    typingStatusDiv.textContent = typingUsers.length>0 ? typingUsers.join(", ")+" is typing..." : "";
+  });
+
+  // Send message
+  function sendMessage(){
+    const msg = msgInput.value.trim();
+    if(!msg) return;
+    push(ref(db, "rooms/"+room+"/messages")).then(ref=>{
+      set(ref, {
+        text: msg,
+        user: userId,
+        color: userColor,
+        time: Date.now()
+      });
+    });
+    msgInput.value = "";
+  }
+
+  msgInput.addEventListener("keypress", e=>{
+    if(e.key==="Enter") sendMessage();
+  });
+
+  // Load messages
+  function formatTime(timestamp){
+    const d = new Date(timestamp);
+    let h=d.getHours(), m=d.getMinutes();
+    const ampm=h>=12?"PM":"AM";
+    h=h%12||12;
+    m=m<10?"0"+m:m;
+    return h+":"+m+" "+ampm;
+  }
+
+  const messagesRef = ref(db, "rooms/"+room+"/messages");
+  onChildAdded(messagesRef, snap=>{
+    const msgData = snap.val();
+    const div = document.createElement("div");
+    div.classList.add("message");
+    div.style.maxWidth="70%";
+    div.style.padding="10px 15px";
+    div.style.margin="5px 0";
+    div.style.borderRadius="25px";
+    div.style.wordWrap="break-word";
+    div.style.fontSize="15px";
+    div.style.lineHeight="1.4";
+    div.style.position="relative";
+    div.style.wordBreak="break-word";
+
+    if(msgData.user===userId){
+      div.style.background="#dcf8c6";
+      div.style.alignSelf="flex-end";
+      div.style.textAlign="right";
+    } else {
+      div.style.background="#0084ff";
+      div.style.color="#fff";
+      div.style.alignSelf="flex-start";
+      div.style.textAlign="left";
+    }
+
+    if(msgData.user!==userId){
+      const nameDiv = document.createElement("div");
+      nameDiv.textContent = msgData.user;
+      nameDiv.style.fontWeight="bold";
+      nameDiv.style.fontSize="13px";
+      nameDiv.style.marginBottom="3px";
+      div.appendChild(nameDiv);
+    }
+
+    const textDiv = document.createElement("div");
+    textDiv.textContent = msgData.text;
+    div.appendChild(textDiv);
+
+    const timeDiv = document.createElement("div");
+    timeDiv.textContent = formatTime(msgData.time);
+    timeDiv.style.fontSize="11px";
+    timeDiv.style.color=msgData.user===userId?"#555":"#eee";
+    timeDiv.style.position="absolute";
+    timeDiv.style.bottom="5px";
+    timeDiv.style.right="12px";
+    div.appendChild(timeDiv);
+
+    chatDiv.appendChild(div);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+  });
+
+  window.sendMessage = sendMessage;
+</script>
+
+<style>
+  body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    background:linear-gradient(135deg,#74ebd5,#acb6e5);
+  }
+  #header{
+    padding:15px;
+    background:#075e54;
+    color:white;
+    font-size:18px;
+    font-weight:bold;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    position:sticky;
+    top:0;
+    z-index:10;
+  }
+  #chat{
+    flex:1;
+    overflow-y:auto;
+    padding:15px;
+    display:flex;
+    flex-direction:column;
+    scroll-behavior:smooth;
+  }
+  #inputArea{
+    display:flex;
+    padding:12px;
+    border-top:1px solid #ccc;
+    background:#f7f7f7;
+  }
+  #msg{
+    flex:1;
+    padding:12px 15px;
+    border-radius:25px;
+    border:1px solid #ccc;
+    outline:none;
+    font-size:15px;
+    transition:all 0.2s;
+  }
+  #msg:focus{
+    border-color:#0084ff;
+    box-shadow:0 0 5px rgba(0,132,255,0.3);
+  }
+  button{
+    margin-left:10px;
+    padding:12px 20px;
+    border:none;
+    border-radius:25px;
+    background:#0084ff;
+    color:white;
+    cursor:pointer;
+    font-size:15px;
+    transition:0.2s;
+  }
+  button:hover{background:#006fd1;}
+  #typingStatus{
+    font-size:12px;
+    color:#333;
+    margin:5px 15px;
+  }
+</style>
+
+</head>
+<body>
+  <div id="header">
+    Fancy Chat
+    <span id="onlineStatus">Offline</span>
+  </div>
+  <div id="chat"></div>
+  <div id="typingStatus"></div>
+  <div id="inputArea">
+    <input id="msg" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+</body>
+</html>
